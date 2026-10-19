@@ -38,12 +38,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import com.example.microstrujillo.model.Ruta
+import com.example.microstrujillo.domain.RutaCalculada
 import com.example.microstrujillo.ui.theme.Ambar
 import com.example.microstrujillo.ui.theme.Azul
 import com.example.microstrujillo.ui.theme.AzulOscuro
 import com.example.microstrujillo.ui.theme.Rojo
 import com.example.microstrujillo.ui.theme.Verde
+import org.osmdroid.util.GeoPoint
 
 private val AmarilloAC = Color(0xFFFFD600)
 private val NegroAC = Color.Black
@@ -124,11 +132,17 @@ fun PantallaInicio(
     onIrBilletera: () -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        Cabecera("Micros Trujillo", "Tu transporte, sin esperas a ciegas")
+        Cabecera("Micros Trujillo", "¿A dónde quieres ir hoy?")
         Column(
             Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            TarjetaAccion("🗺️", "Pedir un micro", "Selecciona tu origen y destino", onIrRadar)
+            TarjetaAccion("💳", "Mi billetera", "Saldo y recargas", onIrBilletera)
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
+            // Lo movemos abajo temporalmente para que parezca un menú de ajustes
             Card(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -147,29 +161,12 @@ fun PantallaInicio(
                             fontSize = 18.sp,
                             color = if (accesible) NegroAC else MaterialTheme.colorScheme.onSurface
                         )
-                        Text(
-                            "Botones gigantes y lectura por voz",
-                            fontSize = 14.sp,
-                            color = if (accesible) NegroAC else MaterialTheme.colorScheme.onSurface
-                        )
                     }
                     Switch(
                         checked = accesible,
-                        onCheckedChange = onToggleAccesible,
-                        modifier = Modifier.semantics {
-                            contentDescription =
-                                if (accesible) "Modo accesible activado. Toca para desactivar"
-                                else "Modo accesible desactivado. Toca para activar"
-                        }
+                        onCheckedChange = onToggleAccesible
                     )
                 }
-            }
-            if (accesible) {
-                BotonGigante("VER BUSES CERCA", "Ver buses cercanos y tiempos de espera", onIrRadar)
-                BotonGigante("MI BILLETERA", "Abrir mi billetera y ver mi saldo", onIrBilletera)
-            } else {
-                TarjetaAccion("📡", "Radar de rutas", "Mira cuánto falta para tu micro", onIrRadar)
-                TarjetaAccion("💳", "Mi billetera", "Saldo y recargas", onIrBilletera)
             }
         }
     }
@@ -278,6 +275,217 @@ fun PantallaBilletera(saldo: Double, accesible: Boolean, onRecargar: (Double) ->
                     ) { Text("+ S/ 10") }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun PantallaMapa(
+    origen: GeoPoint?,
+    destino: GeoPoint?,
+    rutaCalculada: RutaCalculada?,
+    modoSeleccion: Int,
+    onEstablecerModo: (Int) -> Unit,
+    onMapClick: (GeoPoint) -> Unit,
+    onGpsRequest: (android.content.Context) -> Unit
+) {
+    val context = LocalContext.current
+    val trujillo = GeoPoint(-8.11599, -79.0258)
+    var mapViewRef by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<org.osmdroid.views.MapView?>(null) }
+
+    // Encuadrar la cámara automáticamente en la ruta calculada
+    androidx.compose.runtime.LaunchedEffect(rutaCalculada) {
+        rutaCalculada?.let { rc ->
+            val puntosAEncuadrar = mutableListOf<GeoPoint>().apply {
+                origen?.let { add(it) }
+                destino?.let { add(it) }
+                add(rc.paraderoSubida)
+                add(rc.paraderoBajada)
+                addAll(rc.viajeMicro)
+            }
+            if (puntosAEncuadrar.isNotEmpty()) {
+                val box = org.osmdroid.util.BoundingBox.fromGeoPoints(puntosAEncuadrar)
+                mapViewRef?.zoomToBoundingBox(box, true, 120)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        androidx.compose.ui.viewinterop.AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                org.osmdroid.views.MapView(ctx).apply {
+                    val hotTileSource = org.osmdroid.tileprovider.tilesource.XYTileSource(
+                        "OpenStreetMap_HOT",
+                        0, 19, 256, ".png",
+                        arrayOf(
+                            "https://a.tile.openstreetmap.fr/hot/",
+                            "https://b.tile.openstreetmap.fr/hot/"
+                        )
+                    )
+                    setTileSource(hotTileSource)
+                    setUseDataConnection(true)
+                    setMultiTouchControls(true)
+                    
+                    val boundingBox = org.osmdroid.util.BoundingBox(
+                        -8.00, -78.90, -8.20, -79.15
+                    )
+                    
+                    setScrollableAreaLimitDouble(boundingBox)
+                    minZoomLevel = 11.0
+                    maxZoomLevel = 19.0
+                    
+                    controller.setZoom(14.0)
+                    controller.setCenter(origen ?: trujillo)
+                    mapViewRef = this
+                }
+            },
+            update = { mapView ->
+                mapViewRef = mapView
+                mapView.overlays.clear()
+
+                val mReceive = object : org.osmdroid.events.MapEventsReceiver {
+                    override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+                        onMapClick(p)
+                        return true
+                    }
+                    override fun longPressHelper(p: GeoPoint): Boolean = false
+                }
+                mapView.overlays.add(org.osmdroid.views.overlay.MapEventsOverlay(mReceive))
+
+                origen?.let {
+                    val m = org.osmdroid.views.overlay.Marker(mapView).apply {
+                        position = it
+                        title = "Origen"
+                        setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+                    }
+                    mapView.overlays.add(m)
+                }
+                
+                destino?.let {
+                    val m = org.osmdroid.views.overlay.Marker(mapView).apply {
+                        position = it
+                        title = "Destino"
+                        setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+                    }
+                    mapView.overlays.add(m)
+                }
+
+                rutaCalculada?.let { rc ->
+                    val trazadoCompleto = rc.routeEntity.shapePoints.ifEmpty { rc.routeEntity.recorrido }
+                    val rutaCompleta = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                        setPoints(trazadoCompleto)
+                        outlinePaint.color = android.graphics.Color.parseColor("#90A4AE")
+                        outlinePaint.strokeWidth = 6f
+                    }
+                    val caminataInicio = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                        setPoints(rc.caminataInicio)
+                        outlinePaint.color = android.graphics.Color.DKGRAY
+                        outlinePaint.strokeWidth = 8f
+                        outlinePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(20f, 20f), 0f)
+                    }
+                    val viajeMicro = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                        setPoints(rc.viajeMicro)
+                        outlinePaint.color = android.graphics.Color.BLUE
+                        outlinePaint.strokeWidth = 14f
+                    }
+                    val caminataFin = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                        setPoints(rc.caminataFin)
+                        outlinePaint.color = android.graphics.Color.DKGRAY
+                        outlinePaint.strokeWidth = 8f
+                        outlinePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(20f, 20f), 0f)
+                    }
+
+                    mapView.overlays.addAll(listOf(rutaCompleta, caminataInicio, viajeMicro, caminataFin))
+
+                    val markerSubida = org.osmdroid.views.overlay.Marker(mapView).apply {
+                        position = rc.paraderoSubida
+                        title = "Sube aquí"
+                        setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+                    }
+                    val markerBajada = org.osmdroid.views.overlay.Marker(mapView).apply {
+                        position = rc.paraderoBajada
+                        title = "Baja aquí"
+                        setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+                    }
+                    mapView.overlays.addAll(listOf(markerSubida, markerBajada))
+                }
+
+                mapView.postInvalidate()
+            }
+        )
+
+        // Panel de controles superior al estilo inDrive
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .align(Alignment.TopCenter),
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // Selector de origen
+                OutlinedButton(
+                    onClick = { onEstablecerModo(1) },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(if (modoSeleccion == 1) 2.dp else 1.dp, if (modoSeleccion == 1) Azul else Color.LightGray)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🟢", modifier = Modifier.padding(end = 8.dp))
+                        Text(if (origen != null) "Origen fijado en mapa" else "Ubicación actual", 
+                             color = if (modoSeleccion == 1) Azul else Color.Gray, 
+                             modifier = Modifier.weight(1f))
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Selector de destino
+                OutlinedButton(
+                    onClick = { onEstablecerModo(2) },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(if (modoSeleccion == 2) 2.dp else 1.dp, if (modoSeleccion == 2) Rojo else Color.LightGray)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("📍", modifier = Modifier.padding(end = 8.dp))
+                        Text(if (destino != null) "Destino fijado en mapa" else "¿A dónde vamos?", 
+                             color = if (modoSeleccion == 2) Rojo else Color.Gray, 
+                             modifier = Modifier.weight(1f))
+                    }
+                }
+
+                // Información de la ruta calculada
+                rutaCalculada?.let {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFF0F4FF), RoundedCornerShape(12.dp)).padding(12.dp)) {
+                        Column {
+                            Text("🚌 Toma la ${it.routeEntity.nombreLinea}", color = Azul, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("🚍 Recorrido en micro: %.1f km".format(it.distanciaMicroTotal / 1000.0), color = Color.DarkGray, fontSize = 13.sp)
+                            Text("🚶 Caminata a paraderos: ${it.distanciaCaminataTotal.toInt()} metros", color = Color.DarkGray, fontSize = 13.sp)
+                            Text("⏳ Tiempo total estimado: ${it.tiempoTotalMinutos} min", color = Color.DarkGray, fontSize = 13.sp)
+                        }
+                    }
+                }
+                
+                if (modoSeleccion != 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Toca cualquier parte del mapa para marcar el punto", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.align(Alignment.CenterHorizontally))
+                }
+            }
+        }
+        
+        // Botón flotante para GPS
+        Button(
+            onClick = { onGpsRequest(context) },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).size(56.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = Azul)
+        ) {
+            Text("📍", fontSize = 20.sp)
         }
     }
 }

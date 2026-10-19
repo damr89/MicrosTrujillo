@@ -65,7 +65,23 @@ fun TransportApp(vm: TransportViewModel = viewModel()) {
                     onIrBilletera = { nav.navigate(Destinos.BILLETERA) }
                 )
             }
-            composable(Destinos.RADAR) { PantallaRadar(rutas, accesible) }
+            composable(Destinos.RADAR) {
+                // Obtenemos los estados para el mapa
+                val origen = vm.origen.collectAsState().value
+                val destino = vm.destino.collectAsState().value
+                val rutaCalculada = vm.rutaCalculada.collectAsState().value
+                val modoSeleccion = vm.modoSeleccion.collectAsState().value
+
+                PantallaMapa(
+                    origen = origen,
+                    destino = destino,
+                    rutaCalculada = rutaCalculada,
+                    modoSeleccion = modoSeleccion,
+                    onEstablecerModo = vm::establecerModoSeleccion,
+                    onMapClick = vm::enClicMapa,
+                    onGpsRequest = vm::obtenerUbicacionGPS
+                )
+            }
             composable(Destinos.BILLETERA) { PantallaBilletera(saldo, accesible, vm::recargar) }
         }
     }
