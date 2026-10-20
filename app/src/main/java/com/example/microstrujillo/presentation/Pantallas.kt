@@ -137,7 +137,7 @@ fun PantallaInicio(
             Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            TarjetaAccion("🗺️", "Pedir un micro", "Selecciona tu origen y destino", onIrRadar)
+            TarjetaAccion("🗺️", "Transporte", "Selecciona tu origen y destino", onIrRadar)
             TarjetaAccion("💳", "Mi billetera", "Saldo y recargas", onIrBilletera)
             
             Spacer(modifier = Modifier.weight(1f))

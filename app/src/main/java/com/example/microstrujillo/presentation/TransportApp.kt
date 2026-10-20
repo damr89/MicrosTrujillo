@@ -16,6 +16,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
 object Destinos {
+    const val LOGIN = "login"
     const val INICIO = "inicio"
     const val RADAR = "radar"
     const val BILLETERA = "billetera"
@@ -39,24 +40,35 @@ fun TransportApp(vm: TransportViewModel = viewModel()) {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                items.forEach { item ->
-                    NavigationBarItem(
-                        selected = actual == item.ruta,
-                        onClick = {
-                            nav.navigate(item.ruta) {
-                                popUpTo(Destinos.INICIO)
-                                launchSingleTop = true
-                            }
-                        },
-                        icon = { Text(item.emoji) },
-                        label = { Text(item.etiqueta) }
-                    )
+            if (actual != Destinos.LOGIN) {
+                NavigationBar {
+                    items.forEach { item ->
+                        NavigationBarItem(
+                            selected = actual == item.ruta,
+                            onClick = {
+                                nav.navigate(item.ruta) {
+                                    popUpTo(Destinos.INICIO)
+                                    launchSingleTop = true
+                                }
+                            },
+                            icon = { Text(item.emoji) },
+                            label = { Text(item.etiqueta) }
+                        )
+                    }
                 }
             }
         }
     ) { padding ->
-        NavHost(nav, startDestination = Destinos.INICIO, modifier = Modifier.padding(padding)) {
+        NavHost(nav, startDestination = Destinos.LOGIN, modifier = Modifier.padding(padding)) {
+            composable(Destinos.LOGIN) {
+                PantallaLogin(
+                    onLoginSuccess = {
+                        nav.navigate(Destinos.INICIO) {
+                            popUpTo(Destinos.LOGIN) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable(Destinos.INICIO) {
                 PantallaInicio(
                     accesible = accesible,
