@@ -80,3 +80,4 @@ El proyecto ha sido diseñado para ser un motor genérico y 100% escalable. Para
 4. Añadir el nombre de ese archivo al arreglo `archivosRutas` dentro de `SmartBusEngine.kt`.
 5. Incrementar en +1 el `version` dentro de `AppDatabase.kt`.
 6. ¡Listo! Al abrir la app, la nueva ruta será considerada para los cálculos matemáticos instantáneamente.
+# moviles
