@@ -7,6 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.microstrujillo.data.AppDatabase
 import com.example.microstrujillo.data.RouteRepository
+import com.example.microstrujillo.data.UserRepository
+import com.example.microstrujillo.presentation.LoginViewModel
+import com.example.microstrujillo.presentation.LoginViewModelFactory
 import com.example.microstrujillo.presentation.TransportApp
 import com.example.microstrujillo.presentation.TransportViewModel
 import com.example.microstrujillo.presentation.TransportViewModelFactory
@@ -37,29 +40,32 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
 
-        // 2. INICIALIZAMOS TU BACKEND (ROOM DATABASE + REPOSITORY)
+        // 2. INICIALIZAMOS EL BACKEND (ROOM DATABASE + REPOSITORIOS)
         val database = AppDatabase.obtenerBaseDatos(this)
-        val repository = RouteRepository(database.routeDao())
+        val routeRepository = RouteRepository(database.routeDao())
+        val userRepository = UserRepository(database.userDao())
 
         setContent {
             MicrosTrujilloTheme {
 
-                // 2. CREAMOS EL VIEWMODEL UNIENDO AMBAS PARTES
-                val viewModel: TransportViewModel = viewModel(
-                    factory = TransportViewModelFactory(repository)
+                // 3. CREAMOS LOS VIEWMODELS MEDIANTE SUS RESPECTIVAS FACTORIES
+                val transportViewModel: TransportViewModel = viewModel(
+                    factory = TransportViewModelFactory(routeRepository)
+                )
+                val loginViewModel: LoginViewModel = viewModel(
+                    factory = LoginViewModelFactory(userRepository)
                 )
 
                 // Inicializar rutas GeoJSON desde assets/routes/
                 androidx.compose.runtime.LaunchedEffect(Unit) {
-                    viewModel.inicializarRutas(applicationContext)
+                    transportViewModel.inicializarRutas(applicationContext)
                 }
 
-                // 3. SE LO PASAMOS AL FRONTEND DE RODRIGO
-                TransportApp(viewModel)
-
-                // IMPORTANTE: Si TransportApp(viewModel) se pone en rojo, es porque Rodrigo
-                // no le puso parámetros en Pantallas.kt. Si eso pasa, simplemente bórralo
-                // y déjalo como TransportApp().
+                // 4. PASAMOS AMBOS VIEWMODELS A LA APLICACIÓN PRINCIPAL
+                TransportApp(
+                    vm = transportViewModel,
+                    loginVm = loginViewModel
+                )
             }
         }
     }

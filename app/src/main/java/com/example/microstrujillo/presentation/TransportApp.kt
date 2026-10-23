@@ -9,17 +9,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.microstrujillo.data.AppDatabase
+import com.example.microstrujillo.data.UserRepository
 
 object Destinos {
     const val LOGIN = "login"
     const val INICIO = "inicio"
     const val RADAR = "radar"
     const val BILLETERA = "billetera"
+    const val AJUSTES = "ajustes"
 }
 
 private data class Item(val ruta: String, val etiqueta: String, val emoji: String)
@@ -31,7 +35,17 @@ private val items = listOf(
 )
 
 @Composable
-fun TransportApp(vm: TransportViewModel = viewModel()) {
+fun TransportApp(
+    vm: TransportViewModel = viewModel(),
+    loginVm: LoginViewModel? = null
+) {
+    val context = LocalContext.current
+    val actualLoginVm: LoginViewModel = loginVm ?: viewModel(
+        factory = LoginViewModelFactory(
+            UserRepository(AppDatabase.obtenerBaseDatos(context).userDao())
+        )
+    )
+
     val nav = rememberNavController()
     val rutas by vm.rutas.collectAsState()
     val accesible by vm.modoAccesible.collectAsState()
@@ -40,14 +54,14 @@ fun TransportApp(vm: TransportViewModel = viewModel()) {
 
     Scaffold(
         bottomBar = {
-            if (actual != Destinos.LOGIN) {
+            if (actual != Destinos.LOGIN && actual != Destinos.AJUSTES) {
                 NavigationBar {
                     items.forEach { item ->
                         NavigationBarItem(
                             selected = actual == item.ruta,
                             onClick = {
                                 nav.navigate(item.ruta) {
-                                    popUpTo(Destinos.INICIO)
+                                    popUpTo(Destinos.RADAR)
                                     launchSingleTop = true
                                 }
                             },
@@ -62,8 +76,9 @@ fun TransportApp(vm: TransportViewModel = viewModel()) {
         NavHost(nav, startDestination = Destinos.LOGIN, modifier = Modifier.padding(padding)) {
             composable(Destinos.LOGIN) {
                 PantallaLogin(
+                    viewModel = actualLoginVm,
                     onLoginSuccess = {
-                        nav.navigate(Destinos.INICIO) {
+                        nav.navigate(Destinos.RADAR) {
                             popUpTo(Destinos.LOGIN) { inclusive = true }
                         }
                     }
@@ -74,7 +89,8 @@ fun TransportApp(vm: TransportViewModel = viewModel()) {
                     accesible = accesible,
                     onToggleAccesible = vm::setModoAccesible,
                     onIrRadar = { nav.navigate(Destinos.RADAR) },
-                    onIrBilletera = { nav.navigate(Destinos.BILLETERA) }
+                    onIrBilletera = { nav.navigate(Destinos.BILLETERA) },
+                    onIrConfiguracion = { nav.navigate(Destinos.AJUSTES) }
                 )
             }
             composable(Destinos.RADAR) {
@@ -95,6 +111,17 @@ fun TransportApp(vm: TransportViewModel = viewModel()) {
                 )
             }
             composable(Destinos.BILLETERA) { PantallaBilletera(saldo, accesible, vm::recargar) }
+            composable(Destinos.AJUSTES) {
+                PantallaConfiguracionCuenta(
+                    viewModel = actualLoginVm,
+                    onVolver = { nav.popBackStack() },
+                    onCerrarSesion = {
+                        nav.navigate(Destinos.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
+            }
         }
     }
 }
