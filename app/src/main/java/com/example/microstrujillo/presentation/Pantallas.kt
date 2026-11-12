@@ -129,7 +129,8 @@ fun PantallaInicio(
     accesible: Boolean,
     onToggleAccesible: (Boolean) -> Unit,
     onIrRadar: () -> Unit,
-    onIrBilletera: () -> Unit
+    onIrBilletera: () -> Unit,
+    onIrConfiguracion: () -> Unit = {}
 ) {
     Column(Modifier.fillMaxSize()) {
         Cabecera("Micros Trujillo", "¿A dónde quieres ir hoy?")
@@ -139,6 +140,7 @@ fun PantallaInicio(
         ) {
             TarjetaAccion("🗺️", "Transporte", "Selecciona tu origen y destino", onIrRadar)
             TarjetaAccion("💳", "Mi billetera", "Saldo y recargas", onIrBilletera)
+            TarjetaAccion("⚙️", "Configuración de cuenta", "Perfil, seguridad y sesión", onIrConfiguracion)
             
             Spacer(modifier = Modifier.weight(1f))
             

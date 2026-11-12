@@ -6,12 +6,18 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.microstrujillo.model.RouteEntity
+import com.example.microstrujillo.model.UserEntity
 
-@Database(entities = [RouteEntity::class], version = 39, exportSchema = false)
+@Database(
+    entities = [RouteEntity::class, UserEntity::class],
+    version = 40,
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun routeDao(): RouteDao
+    abstract fun userDao(): UserDao
 
     companion object {
         @Volatile
@@ -24,8 +30,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "trujillo_transport_db"
                 )
-                .fallbackToDestructiveMigration(dropAllTables = true)
-                .build()
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
                 INSTANCE = instancia
                 instancia
             }
