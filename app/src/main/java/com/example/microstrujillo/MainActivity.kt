@@ -20,17 +20,13 @@ import java.io.File
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 1. INICIALIZAMOS EL MAPA GLOBALMENTE AQUI
+
+        // 1. INICIALIZAMOS EL MAPA GLOBALMENTE AQUÍ
         val ctx = applicationContext
-        
-        // Configuramos la ruta de preferencias
+
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE))
-        
-        // User-Agent obligatorio para OpenStreetMap
         Configuration.getInstance().userAgentValue = "MicrosTrujilloAppEstudiantil/1.0 (universidad_trujillo_mobile_app@gmail.com)"
-        
-        // Configurar directorio de caché estable
+
         val basePath = File(ctx.cacheDir, "osmdroid_hot")
         basePath.mkdirs()
         Configuration.getInstance().osmdroidBasePath = basePath
@@ -42,7 +38,10 @@ class MainActivity : ComponentActivity() {
 
         // 2. INICIALIZAMOS EL BACKEND (ROOM DATABASE + REPOSITORIOS)
         val database = AppDatabase.obtenerBaseDatos(this)
-        val routeRepository = RouteRepository(database.routeDao())
+        val routeRepository = RouteRepository(
+            routeDao = database.routeDao(),
+            movimientoDao = database.movimientoDao()
+        )
         val userRepository = UserRepository(database.userDao())
 
         setContent {
@@ -56,7 +55,7 @@ class MainActivity : ComponentActivity() {
                     factory = LoginViewModelFactory(userRepository)
                 )
 
-                // Inicializar rutas GeoJSON desde assets/routes/
+                // Inicializar rutas GeoJSON y billetera persistente en SQLite
                 androidx.compose.runtime.LaunchedEffect(Unit) {
                     transportViewModel.inicializarRutas(applicationContext)
                 }

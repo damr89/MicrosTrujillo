@@ -53,6 +53,9 @@ fun TransportApp(
     val busquedaLinea by vm.busquedaLinea.collectAsState()
     val accesible by vm.modoAccesible.collectAsState()
     val saldo by vm.saldo.collectAsState()
+    val movimientos by vm.movimientos.collectAsState()
+    val mensajePagoExitoso by vm.mensajePagoExitoso.collectAsState()
+    val mensajePagoError by vm.mensajePagoError.collectAsState()
     val actual = nav.currentBackStackEntryAsState().value?.destination?.route
 
     Scaffold(
@@ -140,7 +143,16 @@ fun TransportApp(
                 )
             }
             composable(Destinos.BILLETERA) {
-                PantallaBilletera(saldo, accesible, vm::recargar)
+                PantallaBilletera(
+                    saldo = saldo,
+                    accesible = accesible,
+                    onRecargar = vm::recargar,
+                    movimientos = movimientos,
+                    onPagarNFC = vm::pagarPasajeNFC,
+                    mensajePagoExitoso = mensajePagoExitoso,
+                    mensajePagoError = mensajePagoError,
+                    onLimpiarMensajePago = vm::limpiarMensajesPago
+                )
             }
             composable(Destinos.AJUSTES) {
                 PantallaConfiguracionCuenta(

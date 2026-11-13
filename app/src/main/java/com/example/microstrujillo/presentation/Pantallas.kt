@@ -5,8 +5,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -49,13 +51,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,6 +72,7 @@ import com.example.microstrujillo.domain.LocationHelper
 import com.example.microstrujillo.domain.RutaCalculada
 import com.example.microstrujillo.model.CatalogoFavoritosTrujillo
 import com.example.microstrujillo.model.DestinoFavorito
+import com.example.microstrujillo.model.MovimientoEntity
 import com.example.microstrujillo.model.RouteEntity
 import com.example.microstrujillo.model.Ruta
 import com.example.microstrujillo.ui.theme.Ambar
@@ -168,7 +177,6 @@ fun PantallaInicio(
             Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // SECCIÓN: DESTINOS FRECUENTES / FAVORITOS
             Text(
                 text = "⭐ Destinos frecuentes (1 toque)",
                 fontWeight = FontWeight.Bold,
@@ -239,10 +247,9 @@ fun PantallaInicio(
 
             TarjetaAccion("🗺️", "Mapa de Rutas", "Calcula tu micro según origen y destino", onIrMapa)
             TarjetaAccion("📡", "Catálogo de Líneas", "Busca por empresa o destino y ve su ruta", onIrRadar)
-            TarjetaAccion("💳", "Mi billetera", "Saldo y recargas sin contacto", onIrBilletera)
+            TarjetaAccion("💳", "Mi billetera NFC", "Tarjeta virtual, pago sin contacto e historial", onIrBilletera)
             TarjetaAccion("⚙️", "Configuración de cuenta", "Perfil, seguridad y sesión", onIrConfiguracion)
 
-            // Switch de Modo Accesible
             Card(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -285,7 +292,6 @@ fun PantallaRadar(
     Column(Modifier.fillMaxSize()) {
         Cabecera("Catálogo de Líneas", "${rutas.size} rutas disponibles en Trujillo")
 
-        // Barra de búsqueda y chips de empresa/destino
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -442,57 +448,534 @@ private fun RutaAccesible(ruta: Ruta, onClick: () -> Unit) {
     )
 }
 
+// =========================================================================
+// PANTALLA BILLETERA CON TARJETA VIRTUAL NFC, SIMULADOR DE VALIDADOR E HISTORIAL
+// =========================================================================
+
 @Composable
-fun PantallaBilletera(saldo: Double, accesible: Boolean, onRecargar: (Double) -> Unit) {
-    val saldoTxt = "S/ %.2f".format(saldo)
+fun PantallaBilletera(
+    saldo: Double,
+    accesible: Boolean,
+    onRecargar: (Double) -> Unit,
+    movimientos: List<MovimientoEntity> = emptyList(),
+    onPagarNFC: () -> Unit = {},
+    mensajePagoExitoso: String? = null,
+    mensajePagoError: String? = null,
+    onLimpiarMensajePago: () -> Unit = {}
+) {
     Column(Modifier.fillMaxSize()) {
-        Cabecera("Billetera", "Paga tu pasaje sin efectivo")
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(
-                        if (accesible) Brush.linearGradient(listOf(AmarilloAC, AmarilloAC))
-                        else Brush.linearGradient(listOf(Azul, Color(0xFF6C3BFF)))
+        Cabecera("Billetera NFC", "Tarjeta virtual y pago sin contacto")
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 1. TARJETA VIRTUAL DE TRANSPORTE CON CHIP Y ONDAS NFC
+            item {
+                TarjetaTransporteVirtualNFC(
+                    saldo = saldo,
+                    accesible = accesible
+                )
+            }
+
+            // 2. BOTÓN DE SIMULACIÓN DE ACERCAMIENTO AL VALIDADOR NFC
+            item {
+                Text(
+                    text = "Pago Sin Contacto (Tarifa urbana: S/ 1.50)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = AzulOscuro
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (accesible) {
+                    BotonGigante(
+                        texto = "📲 ACERCAR AL VALIDADOR DEL MICRO (NFC)\nPAGAR S/ 1.50",
+                        descripcion = "Simular acercamiento al lector NFC del micro para pagar un sol con cincuenta céntimos",
+                        onClick = onPagarNFC
                     )
-                    .padding(24.dp)
-            ) {
-                Column {
+                } else {
+                    Button(
+                        onClick = onPagarNFC,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(62.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Verde),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text("📲", fontSize = 22.sp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Acercar al validador del micro (NFC)",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 15.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Descontar pasaje urbano • S/ 1.50",
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. BOTONES DE RECARGA DE SALDO
+            item {
+                Text(
+                    text = "Recargar saldo",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = AzulOscuro
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (accesible) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        BotonGigante("RECARGAR S/ 5", "Recargar cinco soles") { onRecargar(5.0) }
+                        BotonGigante("RECARGAR S/ 10", "Recargar diez soles") { onRecargar(10.0) }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = { onRecargar(5.0) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Azul)
+                        ) {
+                            Text("+ S/ 5.00", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = { onRecargar(10.0) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.5.dp, Azul)
+                        ) {
+                            Text("+ S/ 10.00", fontWeight = FontWeight.Bold, color = Azul)
+                        }
+                    }
+                }
+            }
+
+            // 4. ENCABEZADO DEL HISTORIAL DE MOVIMIENTOS (GUARDADOS EN ROOM SQLITE)
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        "Saldo disponible",
-                        color = if (accesible) NegroAC else Color.White.copy(alpha = 0.85f)
+                        text = "Historial de pagos y recargas",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = AzulOscuro
                     )
                     Text(
-                        saldoTxt,
-                        color = if (accesible) NegroAC else Color.White,
-                        fontSize = if (accesible) 56.sp else 44.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.semantics { contentDescription = "Tu saldo es $saldoTxt" }
+                        text = "${movimientos.size} mov.",
+                        fontSize = 13.sp,
+                        color = Color.Gray
                     )
                 }
             }
-            Text("Recargar", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            if (accesible) {
-                BotonGigante("RECARGAR S/ 5", "Recargar cinco soles", { onRecargar(5.0) })
-                BotonGigante("RECARGAR S/ 10", "Recargar diez soles", { onRecargar(10.0) })
+
+            if (movimientos.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("🧾", fontSize = 36.sp)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Aún no hay movimientos registrados",
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
+                }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { onRecargar(5.0) },
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) { Text("+ S/ 5") }
-                    OutlinedButton(
-                        onClick = { onRecargar(10.0) },
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) { Text("+ S/ 10") }
+                items(movimientos, key = { it.id }) { mov ->
+                    ItemMovimientoBilletera(movimiento = mov, accesible = accesible)
                 }
             }
         }
     }
+
+    // ALERTA DE CONFIRMACIÓN DE PAGO NFC EXITOSO
+    if (mensajePagoExitoso != null) {
+        AlertDialog(
+            onDismissRequest = onLimpiarMensajePago,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("✅ ", fontSize = 22.sp)
+                    Text(
+                        text = "¡Pasaje pagado con éxito!",
+                        fontWeight = FontWeight.Black,
+                        color = Verde,
+                        fontSize = 20.sp
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = mensajePagoExitoso,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = onLimpiarMensajePago,
+                    colors = ButtonDefaults.buttonColors(containerColor = Verde),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Aceptar", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // ALERTA DE SALDO INSUFICIENTE
+    if (mensajePagoError != null) {
+        AlertDialog(
+            onDismissRequest = onLimpiarMensajePago,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("⚠️ ", fontSize = 22.sp)
+                    Text(
+                        text = "Saldo insuficiente",
+                        fontWeight = FontWeight.Black,
+                        color = Rojo,
+                        fontSize = 20.sp
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = mensajePagoError,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = onLimpiarMensajePago,
+                    colors = ButtonDefaults.buttonColors(containerColor = Azul),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Entendido", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 }
+
+@Composable
+private fun TarjetaTransporteVirtualNFC(
+    saldo: Double,
+    accesible: Boolean
+) {
+    val saldoTxt = "S/ %.2f".format(saldo)
+    val colorTexto = if (accesible) NegroAC else Color.White
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(26.dp))
+            .background(
+                if (accesible) {
+                    Brush.linearGradient(listOf(AmarilloAC, AmarilloAC))
+                } else {
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFF0B5FFF),
+                            Color(0xFF1E2A78),
+                            Color(0xFF0A1F44)
+                        )
+                    )
+                }
+            )
+            .then(
+                if (accesible) Modifier.border(4.dp, NegroAC, RoundedCornerShape(26.dp))
+                else Modifier
+            )
+            .padding(22.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Fila Superior: Nombre de la tarjeta + Indicador NFC con Ondas de Radio
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "TRUJILLO PASS • MICROS",
+                        color = colorTexto.copy(alpha = 0.85f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.2.sp
+                    )
+                    Text(
+                        text = "Tarjeta Virtual Sin Contacto",
+                        color = colorTexto.copy(alpha = 0.7f),
+                        fontSize = 11.sp
+                    )
+                }
+
+                // Ícono de Ondas de Radio NFC dibujado con Canvas
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(
+                            color = if (accesible) NegroAC.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(50)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    IconoOndasRadioNFC(color = colorTexto)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "NFC",
+                        color = colorTexto,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Fila Central: Chip Electrónico Metálico + Saldo Actual
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                ChipTarjetaNFC(accesible = accesible)
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "SALDO DISPONIBLE",
+                        color = colorTexto.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = saldoTxt,
+                        color = colorTexto,
+                        fontSize = if (accesible) 44.sp else 38.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Tu saldo disponible en la tarjeta es $saldoTxt"
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Fila Inferior: Número de Serie de la Tarjeta y Estado
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "4591  ••••  ••••  8824",
+                    color = colorTexto.copy(alpha = 0.9f),
+                    fontSize = 14.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (saldo >= 1.50) "● ACTIVA" else "● RECARGAR",
+                    color = if (accesible) NegroAC else if (saldo >= 1.50) Color(0xFF6CE9A6) else Color(0xFFFDA29B),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChipTarjetaNFC(accesible: Boolean) {
+    Canvas(modifier = Modifier.size(width = 52.dp, height = 40.dp)) {
+        val chipColor = if (accesible) Color(0xFF333333) else Color(0xFFE5C158)
+        val lineColor = if (accesible) AmarilloAC else Color(0xFF8C6D1F)
+
+        // Cuerpo redondeado del chip
+        drawRoundRect(
+            color = chipColor,
+            size = size,
+            cornerRadius = CornerRadius(12f, 12f)
+        )
+        // Borde del chip
+        drawRoundRect(
+            color = lineColor,
+            size = size,
+            cornerRadius = CornerRadius(12f, 12f),
+            style = Stroke(width = 2.5f)
+        )
+        // Líneas internas de contacto del chip inteligente
+        drawLine(
+            color = lineColor,
+            start = Offset(size.width * 0.33f, 0f),
+            end = Offset(size.width * 0.33f, size.height),
+            strokeWidth = 2f
+        )
+        drawLine(
+            color = lineColor,
+            start = Offset(size.width * 0.66f, 0f),
+            end = Offset(size.width * 0.66f, size.height),
+            strokeWidth = 2f
+        )
+        drawLine(
+            color = lineColor,
+            start = Offset(0f, size.height * 0.5f),
+            end = Offset(size.width, size.height * 0.5f),
+            strokeWidth = 2f
+        )
+    }
+}
+
+@Composable
+private fun IconoOndasRadioNFC(color: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val strokeWidth = 2.4.dp.toPx()
+        val radii = listOf(size.minDimension * 0.22f, size.minDimension * 0.36f, size.minDimension * 0.50f)
+        val center = Offset(size.width * 0.25f, size.height * 0.5f)
+
+        // Punto emisor
+        drawCircle(
+            color = color,
+            radius = 2.2.dp.toPx(),
+            center = center
+        )
+
+        // Tres arcos concéntricos simulando las ondas de radio sin contacto
+        radii.forEach { r ->
+            drawArc(
+                color = color,
+                startAngle = -45f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = Offset(center.x - r, center.y - r),
+                size = Size(r * 2, r * 2),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ItemMovimientoBilletera(
+    movimiento: MovimientoEntity,
+    accesible: Boolean
+) {
+    val esRecarga = movimiento.tipo == "RECARGA"
+    val colorMonto = if (esRecarga) Verde else Rojo
+    val signo = if (esRecarga) "+" else "-"
+    val montoFormateado = "$signo S/ %.2f".format(kotlin.math.abs(movimiento.monto))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (accesible) AmarilloAC else Color.White
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (accesible) NegroAC.copy(alpha = 0.12f)
+                        else colorMonto.copy(alpha = 0.12f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (esRecarga) "💳" else "🚌",
+                    fontSize = 20.sp
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp)
+            ) {
+                Text(
+                    text = movimiento.titulo,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (accesible) 17.sp else 15.sp,
+                    color = if (accesible) NegroAC else AzulOscuro
+                )
+                Text(
+                    text = movimiento.detalle,
+                    fontSize = 13.sp,
+                    color = if (accesible) NegroAC else Color.DarkGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = movimiento.fechaHora,
+                    fontSize = 11.sp,
+                    color = if (accesible) NegroAC.copy(alpha = 0.75f) else Color.Gray
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = montoFormateado,
+                    fontWeight = FontWeight.Black,
+                    fontSize = if (accesible) 18.sp else 16.sp,
+                    color = if (accesible) NegroAC else colorMonto
+                )
+                Text(
+                    text = "Saldo: S/ %.2f".format(movimiento.saldoResultante),
+                    fontSize = 11.sp,
+                    color = if (accesible) NegroAC else Color.Gray
+                )
+            }
+        }
+    }
+}
+
+// =========================================================================
+// PANTALLA MAPA
+// =========================================================================
 
 @Composable
 fun PantallaMapa(
@@ -511,7 +994,6 @@ fun PantallaMapa(
     val trujillo = GeoPoint(-8.11599, -79.0258)
     var mapViewRef by remember { mutableStateOf<org.osmdroid.views.MapView?>(null) }
 
-    // 4. GESTIÓN DE PERMISOS DE UBICACIÓN EN TIEMPO DE EJECUCIÓN
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permisos ->
@@ -530,7 +1012,6 @@ fun PantallaMapa(
         }
     }
 
-    // Encuadrar cámara cuando se selecciona una línea desde el Catálogo (PantallaRadar)
     LaunchedEffect(rutaCatalogo) {
         rutaCatalogo?.let { rc ->
             val pts = rc.shapePoints.ifEmpty { rc.recorrido }
@@ -543,7 +1024,6 @@ fun PantallaMapa(
         }
     }
 
-    // Encuadrar cámara automáticamente en la ruta calculada (Origen -> Destino)
     LaunchedEffect(rutaCalculada) {
         if (rutaCatalogo == null) {
             rutaCalculada?.let { rc ->
@@ -564,7 +1044,6 @@ fun PantallaMapa(
         }
     }
 
-    // Si el usuario fija solo el origen (por GPS) o solo un destino favorito, animar cámara al punto
     LaunchedEffect(origen, destino) {
         if (rutaCatalogo == null && rutaCalculada == null) {
             val puntoFoco = destino ?: origen
@@ -618,7 +1097,6 @@ fun PantallaMapa(
                 }
                 mapView.overlays.add(org.osmdroid.views.overlay.MapEventsOverlay(mReceive))
 
-                // MODO 1: Si el usuario seleccionó una línea del Catálogo (PantallaRadar), dibujamos su recorrido
                 if (rutaCatalogo != null) {
                     val pts = rutaCatalogo.shapePoints.ifEmpty { rutaCatalogo.recorrido }
                     if (pts.size >= 2) {
@@ -648,7 +1126,6 @@ fun PantallaMapa(
                         mapView.overlays.addAll(listOf(markerInicio, markerFin))
                     }
                 } else {
-                    // MODO 2: Ruteo Inteligente Origen -> Destino
                     origen?.let {
                         val m = org.osmdroid.views.overlay.Marker(mapView).apply {
                             position = it
@@ -724,7 +1201,6 @@ fun PantallaMapa(
             }
         )
 
-        // Panel de controles superior
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -736,7 +1212,6 @@ fun PantallaMapa(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 if (rutaCatalogo != null) {
-                    // Vista cuando se está inspeccionando una línea del Catálogo
                     Text(
                         text = "🚌 ${rutaCatalogo.nombreLinea}",
                         color = Azul,
@@ -756,7 +1231,6 @@ fun PantallaMapa(
                         Text("Cerrar recorrido y volver al buscador de viajes", color = Azul)
                     }
                 } else {
-                    // Selector de origen
                     OutlinedButton(
                         onClick = { onEstablecerModo(1) },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -778,7 +1252,6 @@ fun PantallaMapa(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Selector de destino
                     OutlinedButton(
                         onClick = { onEstablecerModo(2) },
                         modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -802,7 +1275,6 @@ fun PantallaMapa(
                         }
                     }
 
-                    // Información de la ruta calculada
                     rutaCalculada?.let {
                         Spacer(modifier = Modifier.height(12.dp))
                         Box(
@@ -850,7 +1322,6 @@ fun PantallaMapa(
             }
         }
 
-        // Botón flotante para GPS con verificación de permisos en tiempo de ejecución
         Button(
             onClick = {
                 if (LocationHelper.tienePermisosUbicacion(context)) {
