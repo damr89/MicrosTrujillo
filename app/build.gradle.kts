@@ -70,6 +70,8 @@ dependencies {
     implementation(libs.play.services.location)
     implementation("org.osmdroid:osmdroid-android:6.1.20")
     
-    // JSON
+    // JSON & REST API (Retrofit 2)
     implementation(libs.gson)
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
 }

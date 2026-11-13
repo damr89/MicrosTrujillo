@@ -59,6 +59,7 @@ fun PantallaConfiguracionCuenta(
 
     var mostrarDialogoCambiarClave by remember { mutableStateOf(false) }
     var mostrarDialogoConfirmarLogout by remember { mutableStateOf(false) }
+    var mostrarDialogoPoliticaPrivacidad by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -224,6 +225,39 @@ fun PantallaConfiguracionCuenta(
                         checked = recordarSesion,
                         onCheckedChange = { viewModel.actualizarRecordarPerfil(it) }
                     )
+                }
+            }
+
+            // Sección: Privacidad y Ubicación (Semana 11)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(2.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "🔒 Privacidad y Ubicación GPS",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = AzulOscuro
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Consulta cómo se protegen y utilizan tus datos de geolocalización.",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { mostrarDialogoPoliticaPrivacidad = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Ver Política de Privacidad de Ubicación", color = Azul, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
@@ -399,6 +433,45 @@ fun PantallaConfiguracionCuenta(
                     colors = ButtonDefaults.buttonColors(containerColor = Azul)
                 ) {
                     Text("Aceptar")
+                }
+            }
+        )
+    }
+
+    // Diálogo: Política de Privacidad de Ubicación (Semana 11)
+    if (mostrarDialogoPoliticaPrivacidad) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogoPoliticaPrivacidad = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔒 ", fontSize = 22.sp)
+                    Text("Política de Privacidad GPS", fontWeight = FontWeight.Bold, color = AzulOscuro)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "MicrosTrujillo - Cumplimiento y Protección de Datos",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "1. Uso de Ubicación: La aplicación solicita coordenadas de alta precisión (ACCESS_FINE_LOCATION) a través de Google Play Services Fused Location Provider únicamente cuando el usuario presiona el botón GPS en el mapa.\n\n" +
+                                "2. Propósito: Localizar la posición del usuario respecto a la malla vial de Trujillo para seleccionar el paradero de origen y trazar la caminata.\n\n" +
+                                "3. Almacenamiento: Las coordenadas NO se transmiten a servidores externos ni se almacenan en bases de datos remotas. Su ciclo de vida ocurre en memoria mientras la pantalla del mapa está abierta.\n\n" +
+                                "4. Control: Puedes revocar el permiso de ubicación en cualquier momento desde los Ajustes de Aplicaciones de tu teléfono.",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray,
+                        lineHeight = 17.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { mostrarDialogoPoliticaPrivacidad = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Azul)
+                ) {
+                    Text("Cerrar")
                 }
             }
         )
