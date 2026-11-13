@@ -6,8 +6,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -21,6 +21,7 @@ import com.example.microstrujillo.data.UserRepository
 object Destinos {
     const val LOGIN = "login"
     const val INICIO = "inicio"
+    const val MAPA = "mapa"
     const val RADAR = "radar"
     const val BILLETERA = "billetera"
     const val AJUSTES = "ajustes"
@@ -30,7 +31,8 @@ private data class Item(val ruta: String, val etiqueta: String, val emoji: Strin
 
 private val items = listOf(
     Item(Destinos.INICIO, "Inicio", "🏠"),
-    Item(Destinos.RADAR, "Radar", "📡"),
+    Item(Destinos.MAPA, "Mapa", "🗺️"),
+    Item(Destinos.RADAR, "Líneas", "📡"),
     Item(Destinos.BILLETERA, "Billetera", "💳")
 )
 
@@ -47,7 +49,8 @@ fun TransportApp(
     )
 
     val nav = rememberNavController()
-    val rutas by vm.rutas.collectAsState()
+    val rutasFiltradas by vm.rutasFiltradas.collectAsState()
+    val busquedaLinea by vm.busquedaLinea.collectAsState()
     val accesible by vm.modoAccesible.collectAsState()
     val saldo by vm.saldo.collectAsState()
     val actual = nav.currentBackStackEntryAsState().value?.destination?.route
@@ -61,8 +64,9 @@ fun TransportApp(
                             selected = actual == item.ruta,
                             onClick = {
                                 nav.navigate(item.ruta) {
-                                    popUpTo(Destinos.RADAR)
+                                    popUpTo(Destinos.INICIO) { saveState = true }
                                     launchSingleTop = true
+                                    restoreState = true
                                 }
                             },
                             icon = { Text(item.emoji) },
@@ -78,7 +82,7 @@ fun TransportApp(
                 PantallaLogin(
                     viewModel = actualLoginVm,
                     onLoginSuccess = {
-                        nav.navigate(Destinos.RADAR) {
+                        nav.navigate(Destinos.INICIO) {
                             popUpTo(Destinos.LOGIN) { inclusive = true }
                         }
                     }
@@ -88,17 +92,27 @@ fun TransportApp(
                 PantallaInicio(
                     accesible = accesible,
                     onToggleAccesible = vm::setModoAccesible,
+                    onIrMapa = {
+                        vm.limpiarRutaCatalogo()
+                        nav.navigate(Destinos.MAPA)
+                    },
                     onIrRadar = { nav.navigate(Destinos.RADAR) },
                     onIrBilletera = { nav.navigate(Destinos.BILLETERA) },
-                    onIrConfiguracion = { nav.navigate(Destinos.AJUSTES) }
+                    onIrConfiguracion = { nav.navigate(Destinos.AJUSTES) },
+                    favoritos = vm.destinosFavoritos,
+                    onSeleccionarFavorito = { favorito ->
+                        vm.seleccionarDestinoFavorito(favorito)
+                        nav.navigate(Destinos.MAPA)
+                    }
                 )
             }
-            composable(Destinos.RADAR) {
-                // Obtenemos los estados para el mapa
-                val origen = vm.origen.collectAsState().value
-                val destino = vm.destino.collectAsState().value
-                val rutaCalculada = vm.rutaCalculada.collectAsState().value
-                val modoSeleccion = vm.modoSeleccion.collectAsState().value
+            composable(Destinos.MAPA) {
+                val origen by vm.origen.collectAsState()
+                val destino by vm.destino.collectAsState()
+                val rutaCalculada by vm.rutaCalculada.collectAsState()
+                val modoSeleccion by vm.modoSeleccion.collectAsState()
+                val rutaCatalogo by vm.rutaSeleccionadaCatalogo.collectAsState()
+                val nombreFavorito by vm.nombreDestinoFavorito.collectAsState()
 
                 PantallaMapa(
                     origen = origen,
@@ -107,10 +121,27 @@ fun TransportApp(
                     modoSeleccion = modoSeleccion,
                     onEstablecerModo = vm::establecerModoSeleccion,
                     onMapClick = vm::enClicMapa,
-                    onGpsRequest = vm::obtenerUbicacionGPS
+                    onGpsRequest = { ctx -> vm.obtenerUbicacionGPS(ctx) },
+                    rutaCatalogo = rutaCatalogo,
+                    onLimpiarRutaCatalogo = vm::limpiarRutaCatalogo,
+                    nombreDestinoFavorito = nombreFavorito
                 )
             }
-            composable(Destinos.BILLETERA) { PantallaBilletera(saldo, accesible, vm::recargar) }
+            composable(Destinos.RADAR) {
+                PantallaRadar(
+                    rutas = rutasFiltradas,
+                    accesible = accesible,
+                    busqueda = busquedaLinea,
+                    onBusquedaChange = vm::actualizarBusquedaLinea,
+                    onSeleccionarRuta = { rutaSeleccionada ->
+                        vm.seleccionarLineaCatalogo(rutaSeleccionada.id)
+                        nav.navigate(Destinos.MAPA)
+                    }
+                )
+            }
+            composable(Destinos.BILLETERA) {
+                PantallaBilletera(saldo, accesible, vm::recargar)
+            }
             composable(Destinos.AJUSTES) {
                 PantallaConfiguracionCuenta(
                     viewModel = actualLoginVm,
