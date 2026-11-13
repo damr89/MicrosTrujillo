@@ -1,16 +1,18 @@
 package com.example.microstrujillo.presentation
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.microstrujillo.domain.RutaCalculada
-import com.example.microstrujillo.domain.RoutingEngine
-import com.example.microstrujillo.domain.LocationHelper
+import com.example.microstrujillo.data.NuevoCaliforniaData
 import com.example.microstrujillo.data.RouteRepository
+import com.example.microstrujillo.domain.LocationHelper
+import com.example.microstrujillo.domain.RoutingEngine
+import com.example.microstrujillo.domain.RutaCalculada
+import com.example.microstrujillo.model.CatalogoFavoritosTrujillo
+import com.example.microstrujillo.model.DestinoFavorito
 import com.example.microstrujillo.model.RouteEntity
 import com.example.microstrujillo.model.Ruta
-import org.osmdroid.util.GeoPoint
-import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,13 +22,23 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.osmdroid.util.GeoPoint
+import java.text.Normalizer
 
 class TransportViewModel(private val repository: RouteRepository) : ViewModel() {
 
-    // 1. LEEMOS DE LA BASE DE DATOS REAL (ROOM)
-    val rutas: StateFlow<List<Ruta>> = repository.todasLasRutas
-        .map { entidadesDeBaseDeDatos ->
-            entidadesDeBaseDeDatos.map { entidad ->
+    // Entidades completas desde Room (incluyen shapePoints y stops)
+    private val _todasLasEntidades: StateFlow<List<RouteEntity>> = repository.todasLasRutas
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    // Lista de modelos ligeros para la vista de catálogo
+    val rutas: StateFlow<List<Ruta>> = _todasLasEntidades
+        .map { entidades ->
+            entidades.map { entidad ->
                 Ruta(
                     id = entidad.id,
                     nombreLinea = entidad.nombreLinea,
@@ -42,6 +54,38 @@ class TransportViewModel(private val repository: RouteRepository) : ViewModel() 
             initialValue = emptyList()
         )
 
+    // --- BUSCADOR Y CATÁLOGO DE LÍNEAS ---
+    private val _busquedaLinea = MutableStateFlow("")
+    val busquedaLinea: StateFlow<String> = _busquedaLinea.asStateFlow()
+
+    val rutasFiltradas: StateFlow<List<Ruta>> = combine(rutas, _busquedaLinea) { listaRutas, query ->
+        if (query.isBlank()) {
+            listaRutas
+        } else {
+            val queryNormalizada = normalizarTexto(query)
+            listaRutas.filter { ruta ->
+                normalizarTexto(ruta.nombreLinea).contains(queryNormalizada) ||
+                        normalizarTexto(ruta.origen).contains(queryNormalizada) ||
+                        normalizarTexto(ruta.destino).contains(queryNormalizada)
+            }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    // Línea seleccionada desde el catálogo (PantallaRadar) para visualizar su recorrido completo
+    private val _rutaSeleccionadaCatalogo = MutableStateFlow<RouteEntity?>(null)
+    val rutaSeleccionadaCatalogo: StateFlow<RouteEntity?> = _rutaSeleccionadaCatalogo.asStateFlow()
+
+    // --- DESTINOS FAVORITOS ---
+    val destinosFavoritos: List<DestinoFavorito> = CatalogoFavoritosTrujillo.destinos
+
+    private val _nombreDestinoFavorito = MutableStateFlow<String?>(null)
+    val nombreDestinoFavorito: StateFlow<String?> = _nombreDestinoFavorito.asStateFlow()
+
+    // --- ACCESIBILIDAD Y BILLETERA ---
     private val _modoAccesible = MutableStateFlow(false)
     val modoAccesible: StateFlow<Boolean> = _modoAccesible.asStateFlow()
 
@@ -59,8 +103,12 @@ class TransportViewModel(private val repository: RouteRepository) : ViewModel() 
     private val _modoSeleccion = MutableStateFlow(0)
     val modoSeleccion: StateFlow<Int> = _modoSeleccion.asStateFlow()
 
-    // RUTA CALCULADA REACTIVA: Se re-calcula de forma automática apenas los paraderos cargan en SQLite o el origen/destino cambian
-    val rutaCalculada: StateFlow<RutaCalculada?> = combine(_origen, _destino, repository.todasLasRutas) { o, d, rutasEntidad ->
+    // Ruta óptima calculada reactivamente cuando hay origen y destino
+    val rutaCalculada: StateFlow<RutaCalculada?> = combine(
+        _origen,
+        _destino,
+        repository.todasLasRutas
+    ) { o, d, rutasEntidad ->
         if (o != null && d != null && rutasEntidad.isNotEmpty()) {
             RoutingEngine.calcularMejorRuta(o, d, rutasEntidad)
         } else {
@@ -76,10 +124,33 @@ class TransportViewModel(private val repository: RouteRepository) : ViewModel() 
         viewModelScope.launch {
             val baseSize = repository.obtenerTodasLasRutasDirecto().size
             if (baseSize == 0) {
-                val rutas = com.example.microstrujillo.data.NuevoCaliforniaData.obtenerRutas(context)
-                repository.guardarRutaPrueba(rutas)
+                val rutasIniciales = NuevoCaliforniaData.obtenerRutas(context)
+                repository.guardarRutaPrueba(rutasIniciales)
             }
         }
+    }
+
+    fun actualizarBusquedaLinea(nuevoTexto: String) {
+        _busquedaLinea.value = nuevoTexto
+    }
+
+    fun seleccionarLineaCatalogo(rutaId: Int) {
+        val entidad = _todasLasEntidades.value.find { it.id == rutaId }
+        if (entidad != null) {
+            _rutaSeleccionadaCatalogo.value = entidad
+            _modoSeleccion.value = 0
+        }
+    }
+
+    fun limpiarRutaCatalogo() {
+        _rutaSeleccionadaCatalogo.value = null
+    }
+
+    fun seleccionarDestinoFavorito(favorito: DestinoFavorito) {
+        _rutaSeleccionadaCatalogo.value = null
+        _destino.value = favorito.toGeoPoint()
+        _nombreDestinoFavorito.value = favorito.nombre
+        _modoSeleccion.value = 0
     }
 
     fun setModoAccesible(activo: Boolean) {
@@ -91,21 +162,29 @@ class TransportViewModel(private val repository: RouteRepository) : ViewModel() 
     }
 
     // --- ACCIONES DEL MAPA ---
-    
+
     fun establecerModoSeleccion(modo: Int) {
         _modoSeleccion.value = modo
     }
 
-    fun obtenerUbicacionGPS(context: Context) {
+    fun obtenerUbicacionGPS(context: Context, onResultado: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
             val ubicacion = LocationHelper.obtenerUbicacionActual(context)
             if (ubicacion != null) {
                 _origen.value = ubicacion
+                onResultado?.invoke(true)
+            } else {
+                onResultado?.invoke(false)
             }
         }
     }
 
     fun enClicMapa(coordenada: GeoPoint) {
+        // Si estaba viendo una línea del catálogo, pasamos al modo de ruteo normal al tocar el mapa
+        if (_rutaSeleccionadaCatalogo.value != null && _modoSeleccion.value != 0) {
+            _rutaSeleccionadaCatalogo.value = null
+        }
+
         when (_modoSeleccion.value) {
             1 -> {
                 _origen.value = coordenada
@@ -113,17 +192,25 @@ class TransportViewModel(private val repository: RouteRepository) : ViewModel() 
             }
             2 -> {
                 _destino.value = coordenada
+                _nombreDestinoFavorito.value = null
                 _modoSeleccion.value = 0
             }
             else -> {
-                // Si el usuario toca el mapa directamente:
-                if (_origen.value == null) {
-                    _origen.value = coordenada
-                } else {
-                    _destino.value = coordenada
+                if (_rutaSeleccionadaCatalogo.value == null) {
+                    if (_origen.value == null) {
+                        _origen.value = coordenada
+                    } else {
+                        _destino.value = coordenada
+                        _nombreDestinoFavorito.value = null
+                    }
                 }
             }
         }
+    }
+
+    private fun normalizarTexto(input: String): String {
+        val temp = Normalizer.normalize(input.lowercase().trim(), Normalizer.Form.NFD)
+        return Regex("\\p{InCombiningDiacriticalMarks}+").replace(temp, "")
     }
 }
 
